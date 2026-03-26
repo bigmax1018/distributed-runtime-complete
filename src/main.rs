@@ -11,6 +11,7 @@ use network::rpc::{start_server, send};
 
 use uuid::Uuid;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
@@ -18,8 +19,10 @@ async fn main() {
     let my_addr = "127.0.0.1:7000";   // this node's TCP port
     let other_node_addr = "127.0.0.1:7001"; // another node
 
-    let scheduler = Arc::new(Scheduler::new());
+    let scheduler = Arc::new(Mutex::new(Scheduler::new()));
     let state_store = Arc::new(StateStore::new());
+
+    let server_handle = tokio::spawn(start_server(my_addr));
 
     //spawn workder loop
     let scheduler_ref = scheduler.clone();
@@ -27,22 +30,35 @@ async fn main() {
 
     tokio::spawn(async move {
        loop {
-           if let Some(task) = scheduler_ref.next().await {
+           let maybe_task = {
+               let mut sched = scheduler_ref.lock().await;
+               sched.next().await
+           };
+
+           if let Some(task) = maybe_task {
                let state_clone = state_ref.clone();
                tokio::spawn(async move {
                    execute_task(task, &state_clone).await;
                });
+           }else {
+               tokio::time::sleep(std::time::Duration::from_millis(100)).await;
            }
        }
     });
 
-    // submit demo task
+    // submit demo task locally
     let task = Task {
         id: Uuid::new_v4(),
         payload: vec![],
     };
+    {
+        let mut sched = scheduler.lock().await;
+        sched.submit(task.clone()).await;
+    }
 
-    scheduler.submit(task).await;
-
-    loop {}
+    let serialize_task = bincode::serialize(&task).unwrap();
+    tokio::spawn(async move {
+        send(other_node_addr, &serialize_task).await;
+    });
+    server_handle.await.unwrap();
 }
