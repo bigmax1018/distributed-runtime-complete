@@ -3,12 +3,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub async fn start_server(addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
+    println!("Server started at {}", addr);
 
     loop {
         let (mut stream, _) = listener.accept().await.unwrap();
 
         tokio::spawn(async move {
-            let mut buf = vec![0; 1024];
+            let mut buf = vec![0u8; 1024];
             let n = stream.read(&mut buf).await.unwrap();
 
             println!("Received {} bytes from {}", n, stream.peer_addr().unwrap());

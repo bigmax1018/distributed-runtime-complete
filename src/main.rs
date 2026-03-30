@@ -58,7 +58,7 @@ async fn main() {
 
     let serialize_task = bincode::serialize(&task).unwrap();
     tokio::spawn(async move {
-        send(other_node_addr, &serialize_task).await;
+        send(my_addr, &serialize_task).await;
     });
     server_handle.await.unwrap();
 }
